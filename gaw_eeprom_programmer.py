@@ -30,13 +30,9 @@
 #				Copyright (C) 2015 Gerard Wassink
 # ------------------------------------------------------------------------
 
-#import sys
-#from interface import ProgrammerInterface
- 
-#if len(sys.argv) > 2:
-#    rom, serial_port, baud_rate = int(sys.argv[1]), sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 57600
-#else:
-#    raise Exception("Invalid arguments")
+import sys
+import time
+import serial
  
 #
 # Define the values for the control signals
@@ -407,49 +403,107 @@ instr = {
 
 
 #
-# === Establish interface
-#
-#interface = ProgrammerInterface(serial_port, baud_rate)
-
-
-#
-# === Clean the EEPROM
-#
-#cleanEEPROM():
-#	for i in range(0, 8191):
-#		interface.write(i, 0)
-#		if (i % 64) == 0:
-#			print ".",
-
-#
 # === Generate commands for the Arduino programmer
 #
 def writeEEPROM(rom):
 	base = rom << 11						# segments of 2048 bytes per 'ROM'
 	print "# ==="
-	print "# === Contents of ROM ", rom, " base addres is 0x%04X" % base
+	print "# === Writing contents of ROM ", rom, " base addres is 0x%04X" % base
 	print "# ==="
 	for op, contr in sorted(instr.iteritems()):	# iterate through instructions
+		print "# === opcode 0x%02X" % op
 		address = base + (op << 3)			# block of 8 micro code steps
-		print "WR 0x%04X" % address,		# base address for this instruction
+		buffer = "WR 0x%04X " % address		# base address for this instruction
 		for i in range(0, len(contr)):		# iterate through microcode steps and
-											# 	print only part
-			print "0x%02X" % ((contr[i] >> (rom * 8)) & 0xFF), 	# for this ROM
-		print "!"							# comment and line end
+											# 	print only part for this ROM
+			toadd = str("0x%02X " % ((contr[i] >> (rom * 8)) & 0xFF))
+			buffer = buffer + toadd
+		toadd = str("!")
+		buffer = buffer + toadd				# comment and line end
+		ser.write(buffer)
+		waitForEndAction()
+		time.sleep(.1)
 
+
+#
+# === find character in string
+#
+def strfind(string, char):
+	r = False
+	for i in range(0, len(string)):
+		if string[i] == char:
+			r = True
+			break
+	return(r)
+
+
+#
+# === Wait for Arduino programmer to be ready
+#
+def waitForPrompt():
+	while True:
+		c = ser.read()
+		print c,
+		if c == '>':
+			break
+	time.sleep(.5)
+
+
+#
+# === Print lines until Arduino completed the action
+#
+def waitForEndAction():
+	while True:
+		l = ser.readline()
+		print l
+		ll = len(l)
+		if strfind(l, '<'):
+			break
+	time.sleep(.5)
+
+
+# ------------------------------------------------------------------------
+#												Start of executable code
+# ------------------------------------------------------------------------
+
+#
+# === Establish serial interface
+#
+ser = serial.Serial("/dev/cu.usbserial-AL02VGAJ", 57600)
+
+print "# === using port", ser.name
+waitForPrompt()
+
+#
+# === Clean the EEPROM
+#
+#ser.write("CL!")
+#waitForEndAction()
+
+#
+# === Show contents of the EEPROM
+#
+
+#ser.write("RD 0x17F8 0x0008 !")
+#waitForEndAction()
 
 #
 # === (Un)comment routines to be executed
 #
-
-#cleanEEPROM()
-
 writeEEPROM(0)
 writeEEPROM(1)
 writeEEPROM(2)
 
+print "# === Closing serial port"
+
+ser.close()
+
+print "# === End program"
+
 exit()
 
-# WR 0X0000 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08
-# .....+....1....+....2....+....3....+....4....+....5
+# WR 0x0000 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08
+# RD 0x0000 0x0000
+# .....+....1....+....2....+....3....+....4....+....5 position
+# ....+....1....+....2....+....3....+....4....+....5 length
 
