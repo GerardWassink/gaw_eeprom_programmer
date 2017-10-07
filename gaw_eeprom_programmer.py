@@ -484,7 +484,7 @@ waitForPrompt()
 # === Show contents of the EEPROM
 #
 
-#ser.write("RD 0x17F8 0x0008 !")
+#ser.write("RD 0x0000 0x0010 !")
 #waitForEndAction()
 
 #
