@@ -3,7 +3,7 @@
 # ------------------------------------------------------------------------
 # Program		:	EEPROM_Programmer.py
 # Author		:	Gerard Wassink
-# Date			:	October 1, 2017
+# Date			:	October, 2017
 #
 # Function		:	convert values for the micro code for an 8 bit 
 #					computer into Arduino code for the content of three
@@ -411,17 +411,16 @@ def writeEEPROM(rom):
 	print "# === Writing contents of ROM ", rom, " base addres is 0x%04X" % base
 	print "# ==="
 	for op, contr in sorted(instr.iteritems()):	# iterate through instructions
-		print "# === opcode 0x%02X" % op
+#		print "# === opcode 0x%02X" % op
 		address = base + (op << 3)			# block of 8 micro code steps
-		buffer = "WR 0x%04X " % address		# base address for this instruction
+		buffer = "WR %04X " % address		# base address for this instruction
 		for i in range(0, len(contr)):		# iterate through microcode steps and
 											# 	print only part for this ROM
-			toadd = str("0x%02X " % ((contr[i] >> (rom * 8)) & 0xFF))
+			toadd = str("%02X " % ((contr[i] >> (rom * 8)) & 0xFF))
 			buffer = buffer + toadd
 		toadd = str("!")
 		buffer = buffer + toadd				# comment and line end
-		ser.write(buffer)
-		waitForEndAction()
+		processCommand(buffer)
 		time.sleep(.1)
 
 
@@ -442,24 +441,66 @@ def strfind(string, char):
 #
 def waitForPrompt():
 	while True:
-		c = ser.read()
-		print c,
-		if c == '>':
+		l = ser.readline()
+		print l[:(len(l)-1)]
+		if strfind(l, '>'):
 			break
-	time.sleep(.5)
+	time.sleep(.1)
 
 
 #
-# === Print lines until Arduino completed the action
+# === Read and display responses until Arduino completed the action
 #
 def waitForEndAction():
 	while True:
-		l = ser.readline()
-		print l
-		ll = len(l)
+		l = ser.readline ()
+		print l[:(len(l)-1)]
 		if strfind(l, '<'):
 			break
-	time.sleep(.5)
+	time.sleep(.1)
+
+
+#
+# === Process a command given and wait for Arduino to be ready
+#
+def  processCommand(command):
+	ser.write(command)
+	waitForEndAction()
+
+
+#
+# === Display help information about the program
+#
+def displayHelp():
+	print ""
+	print "This program is used to program an EEPROM chip"
+	print "using and Arduino Nano, available commands:"
+	print ""
+	print "\t?"
+	print "\tH\tThis help information"
+	print "\tHELP"
+	print ""
+	print "\tRD\tRead from the EEPROM,\tSyntax:RD AAAA LLLL"
+	print ""
+	print "\tWR\tWrite to the EEPROM,\tSyntax: WR AAAA VV VV VV VV VV VV VV VV"
+	print ""
+	print "\tW0\tWrite CU0 to the EEPROM"
+	print "\tW1\tWrite CU1 to the EEPROM"
+	print "\tW2\tWrite CU2 to the EEPROM"
+	print "\tFL\tFill the EEPROM with CU0, CU1 and CU2 values"
+	print ""
+	print "\tQ\tQuit the program"
+	print ""
+	print "All parameters are position dependent, they must be in"
+	print "exact positions to be processed, so mind your spaces."
+	print ""
+	print "Explanation of values:"
+	print "\tAAAA stands for a four digit hexadecimal address"
+	print "\tLLLL stands for a four digit hexadecimal length"
+	print "\tVV stands for a two digit hexadecimal value"
+	print "\tfor CU0, CU1 and CU2, see the Github page."
+	print ""
+	
 
 
 # ------------------------------------------------------------------------
@@ -469,41 +510,66 @@ def waitForEndAction():
 #
 # === Establish serial interface
 #
-ser = serial.Serial("/dev/cu.usbserial-AL02VGAJ", 57600)
+print "# === Program gaw_eeprom_programmer starts"
 
+ser = serial.Serial("/dev/cu.usbserial-AL02VGAJ", 57600)
 print "# === using port", ser.name
+
 waitForPrompt()
 
-#
-# === Clean the EEPROM
-#
-#ser.write("CL!")
-#waitForEndAction()
+print ""
+print "Enter '?' for more information"
+print ""
 
 #
-# === Show contents of the EEPROM
+# === Read and execute commands
 #
+while True:
+	Command = raw_input("$ gaw_eeprom_programmer > ").upper()
+	
+	if (Command == "Q"):
+		break
+		
+	elif (Command == "?" or Command == "H" or Command == "HELP"):
+		displayHelp()
+		
+	elif (Command == "W0"):
+		writeEEPROM(0)
+		print "Programming complete"
+		
+	elif (Command == "W1"):
+		writeEEPROM(1)
+		print "Programming complete"
+		
+	elif (Command == "W2"):
+		writeEEPROM(2)
+		print "Programming complete"
+		
+	elif (Command == "FL"):
+		writeEEPROM(0)
+		writeEEPROM(1)
+		writeEEPROM(2)
+		print "Programming complete"
+		
+	else:
+		processCommand(Command + " !")
 
-#ser.write("RD 0x0000 0x0010 !")
-#waitForEndAction()
-
 #
-# === (Un)comment routines to be executed
+# === Stop the Arduino
 #
-writeEEPROM(0)
-writeEEPROM(1)
-writeEEPROM(2)
+processCommand("QT !")
 
 print "# === Closing serial port"
-
 ser.close()
 
 print "# === End program"
 
 exit()
 
-# WR 0x0000 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08
-# RD 0x0000 0x0000
-# .....+....1....+....2....+....3....+....4....+....5 position
-# ....+....1....+....2....+....3....+....4....+....5 length
-
+# Helpfull information used for programming...
+#
+# WR 0000 01 02 03 04 05 06 07 08
+# RD 0000 0000
+# .....+....1....+....2....+....3. position
+# ....+....1....+....2....+....3.. length
+#

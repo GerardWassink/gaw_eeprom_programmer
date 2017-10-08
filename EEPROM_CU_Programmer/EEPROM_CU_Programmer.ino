@@ -1,9 +1,14 @@
 /* ------------------------------------------------------------------------- *
  * Name   : EEPROM_Programmer
- * Author : Ben Eater
- *              reworked for python Serial communication  by Gerard Wassink
- * Date   : September 2017
+ * Author : Ben Eater (BE)
+ * Author : Gerard Wassink (GW)
+ * Date   : October 2017
  * Purpose: Program the AT28C64 EEPROM using two 74HC595 shift registers
+ * History:
+ *		2017-03 - BE - Described by Ben Eater as part of his video series
+ *		2017-10	- GW - reworked for python Serial communication with
+ *					the Arduino to be able to accept commands from
+ *					a serial connection
  * ------------------------------------------------------------------------- *
  *
  * ------------------------------------------------------------------------- *
@@ -52,13 +57,13 @@ char state = 0;
 /* ------------------------------------------------------------------------------------------ *
  * DEBUGGING ON / OFF
  * -------------------------------------------------------------------------------------------*/
-// char debug = false;
-char debug = true;
+char debug = false;
+//char debug = true;
 
 /* ------------------------------------------------------------------------------------------ *
  * Various strings, buffers
  * -------------------------------------------------------------------------------------------*/
-char errtxt[80} = "";
+char errtxt[80] = "";
 
 char buf[80];
 int ptr = 0;
@@ -75,6 +80,9 @@ const char WRI = 3;
 const char QUI = 4;
 char cc = 0;
 
+/* ------------------------------------------------------------------------------------------ *
+ * Variables holding arguments from serial commands
+ * -------------------------------------------------------------------------------------------*/
 char strAdr[10], strOp1[5], strOp2[5], strOp3[5], strOp4[5], strOp5[5], strOp6[5], strOp7[5], strOp8[5];
 int adr, op1, op2, op3, op4, op5, op6, op7, op8 = 0;
 
@@ -133,21 +141,20 @@ void writeEEPROM(int address, byte data) {
  * Read the contents of the EEPROM and print them to the serial monitor.
  * -------------------------------------------------------------------------------------------*/
 void printContents(int start, int len) {
-  for (int base = start; base <= start+len; base += 16) {
+  for (int base = start; base < start+len; base += 8) {
     
     if (base % 256 == 0) {
       Serial.println(" ");
     }
     
-    byte data[16];
-    for (int offset = 0; offset <= 15; offset += 1) {
+    byte data[8];
+    for (int offset = 0; offset <= 7; offset += 1) {
       data[offset] = readEEPROM(base + offset);
     }
 
-    char buf[80];
-    sprintf(buf, "%04x:  %02x %02x %02x %02x  %02x %02x %02x %02x  -  %02x %02x %02x %02x  %02x %02x %02x %02x",
-            base, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
-            data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]);
+    char buf[40];
+    sprintf(buf, "%04x %02x %02x %02x %02x %02x %02x %02x %02x",
+            base, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
 
     Serial.println(buf);
 
@@ -206,8 +213,7 @@ void setup() {
 
   // Set up serial communications:
   Serial.begin(57600);
-  Serial.println(" ");
-  Serial.println("Start program");
+  Serial.println("\tArduino starts");
 
   // Set pins:
   pinMode(SHIFT_DATA, OUTPUT);
@@ -216,7 +222,9 @@ void setup() {
   digitalWrite(WRITE_EN, HIGH);
   pinMode(WRITE_EN, OUTPUT);
 
-  Serial.println("Programmer initialisation complete");
+  Serial.println("\tArduino initialisation complete");
+
+  state = RDY;
 
 }
 
@@ -228,7 +236,7 @@ void loop() {
   switch (state)
   {
     case RDY:                           // Ready to receive data
-      if (debug) Serial.print("> ");
+      Serial.println(">");
       state = FIL;
       break;
       
@@ -239,12 +247,12 @@ void loop() {
         buf[ptr] = 0;
       }
       if (ptr > 79) {
-        errtxt = "Received more than 80 characters, buffer purged";
+        strcpy(errtxt, "Received more than 80 characters, buffer purged");
         state = ERR;
       } else {
         if ( buf[ptr - 1] == '!' ) {
           buf[--ptr] = 0;
-          if (debug) Serial.print("Endfil: ");
+          if (debug) Serial.print("Buffer filled with: ");
           if (debug) Serial.println(buf);
           state = CHK;
         }
@@ -254,79 +262,128 @@ void loop() {
     case CHK:                           // Checking buffer contents
       strcpy(command, buf);
       if (strlen(command) >= 2) {
-        if (debug) Serial.print("Checking ");
+        if (debug) Serial.print("Checking: ");
         if (debug) Serial.println(command);
         strncpy(cmd,(command+0),2);
-        if (debug) Serial.print("cmd = ");
+        if (debug) Serial.print("cmd: ");
         if (debug) Serial.println(cmd);
+        
         cc = 0;
         if      (strcmp(cmd, "CL") == 0) cc = CLR;
         else if (strcmp(cmd, "RD") == 0) cc = REA;
         else if (strcmp(cmd, "WR") == 0) cc = WRI;
         else if (strcmp(cmd, "QT") == 0) cc = QUI;
+        
         if (cc != 0) {
+        
           switch (cc) {
-            case WRI:
-              if (strlen(command) < 49) {
-                errtxt = "Insufficient operands for Write command";
+            case REA:
+              if (strlen(command) < 11) {
+                strcpy(errtxt, "Insufficient operands for Read command");
                 state = ERR;
               } else {
-                // get operands (adr plus eight values)
-                strncpy(strAdr,(command+5),4);
-                strncpy(strOp1,(command+12),2);
-                strncpy(strOp2,(command+17),2);
-                strncpy(strOp3,(command+22),2);
-                strncpy(strOp4,(command+27),2);
-                strncpy(strOp5,(command+32),2);
-                strncpy(strOp6,(command+37),2);
-                strncpy(strOp7,(command+42),2);
-                strncpy(strOp8,(command+47),2);
+                // get operands (adr and length)
+                strncpy(strAdr,(command+3),4);
+                strncpy(strOp1,(command+8),4);
                 state = PRC;
               }
               break;
+              
+            case WRI:
+              if (strlen(command) < 30) {
+                strcpy(errtxt, "Insufficient operands for Write command");
+                state = ERR;
+              } else {
+                // get operands (adr plus eight values)
+                strncpy(strAdr,(command+3),4);
+                strncpy(strOp1,(command+8),2);
+                strncpy(strOp2,(command+11),2);
+                strncpy(strOp3,(command+14),2);
+                strncpy(strOp4,(command+17),2);
+                strncpy(strOp5,(command+20),2);
+                strncpy(strOp6,(command+23),2);
+                strncpy(strOp7,(command+26),2);
+                strncpy(strOp8,(command+29),2);
+                state = PRC;
+              }
+              break;
+              
             default:
               state = PRC;
               break;
           }
+          
         } else {
-          errtxt = "Invalid command received";
+          strcpy(errtxt, "Invalid command received");
           state = ERR;
         }
+        
       } else {
-        errtxt = "Received less than two characters, buffer purged, try again";
+        strcpy(errtxt, "Received less than two characters, buffer purged, try again");
         ptr = 0;
         state = ERR;
       }
       break;
       
     case PRC:                           // Processing command
-      if (debug) Serial.print("Processing cmd = ");
-      if (debug) Serial.println(cmd);
+      if (debug) {
+        Serial.print("Processing cmd: ");
+        Serial.println(cmd);
+      }
+      
       switch (cc) {
-        case CLR:
+        case CLR:                       // Processing Clear command
+          if (debug) Serial.print("Clearing ");
+
           eraseEEPROM();
+
+          Serial.println("< ");
           break;
         
-        case REA:
-          printContents(0, 8192);
-          break;
-        
-        case WRI:
-          Serial.print(x2i(strAdr)); Serial.print(" ");
-          Serial.print(x2i(strOp1)); Serial.print(" ");
-          Serial.print(x2i(strOp2)); Serial.print(" ");
-          Serial.print(x2i(strOp3)); Serial.print(" ");
-          Serial.print(x2i(strOp4)); Serial.print(" ");
-          Serial.print(x2i(strOp5)); Serial.print(" ");
-          Serial.print(x2i(strOp6)); Serial.print(" ");
-          Serial.print(x2i(strOp7)); Serial.print(" ");
-          Serial.print(x2i(strOp8)); Serial.print(" ");
-          Serial.println(" ");
+        case REA:                       // Processing Read command
+          if (debug) Serial.print("Reading ");
+          
           adr = x2i(strAdr);
+          op1 = x2i(strOp1);
+          
+          printContents(adr, op1);
+          
+          Serial.println("< ");
           break;
         
-        case QUI:
-          Serial.println("Programmer ends, reset to restart");
+        case WRI:                       // Processing Write command
+          if (debug) Serial.print("Writing ");
+          
+          adr = x2i(strAdr);
+          op1 = x2i(strOp1);
+          op2 = x2i(strOp2);
+          op3 = x2i(strOp3);
+          op4 = x2i(strOp4);
+          op5 = x2i(strOp5);
+          op6 = x2i(strOp6);
+          op7 = x2i(strOp7);
+          op8 = x2i(strOp8);
+          
+          Serial.print("WR ");
+          char buf[80];
+          sprintf(buf, "%04x  %02x %02x %02x %02x  %02x %02x %02x %02x",
+            adr, op1, op2, op3, op4, op5, op6, op7, op8);
+          Serial.print(buf);
+          
+          writeEEPROM(adr+0, op1); 
+          writeEEPROM(adr+1, op2); 
+          writeEEPROM(adr+2, op3); 
+          writeEEPROM(adr+3, op4); 
+          writeEEPROM(adr+4, op5); 
+          writeEEPROM(adr+5, op6); 
+          writeEEPROM(adr+6, op7); 
+          writeEEPROM(adr+7, op8); 
+          
+          Serial.println("< ");
+          break;
+        
+        case QUI:                       // Processing Quit command
+          Serial.println("\tArduino ends <");
           delay(20);
           exit(0);
           break;
@@ -339,7 +396,8 @@ void loop() {
       Serial.print("Received: ");
       Serial.println(buf);
       Serial.print("ERROR - ");
-      Serial.println(errtxt);
+      Serial.print(errtxt);
+      Serial.println(" <");
       ptr = 0;
       state = RDY;
       break;
