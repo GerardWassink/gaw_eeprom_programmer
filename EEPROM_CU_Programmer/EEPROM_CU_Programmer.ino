@@ -83,8 +83,14 @@ char cc = 0;
 /* ------------------------------------------------------------------------------------------ *
  * Variables holding arguments from serial commands
  * -------------------------------------------------------------------------------------------*/
-char strAdr[10], strOp1[5], strOp2[5], strOp3[5], strOp4[5], strOp5[5], strOp6[5], strOp7[5], strOp8[5];
-int adr, op1, op2, op3, op4, op5, op6, op7, op8 = 0;
+char strAdr[10], strOp1[5], strOp2[5], strOp3[5], strOp4[5], strOp5[5], strOp6[5], strOp7[5], strOp8[5], strLen[10];
+int adr, op1, op2, op3, op4, op5, op6, op7, op8, Len = 0;
+
+
+/* ------------------------------------------------------------------------------------------ *
+ * Max number of times to try and write values untill readback is equal
+ * -------------------------------------------------------------------------------------------*/
+int maxTries = 5;
 
 
 /* ------------------------------------------------------------------------------------------ *
@@ -130,10 +136,35 @@ void writeEEPROM(int address, byte data) {
     digitalWrite(pin, data & 1);
     data = data >> 1;
   }
+  delayMicroseconds(1);
   digitalWrite(WRITE_EN, LOW);
   delayMicroseconds(1);
   digitalWrite(WRITE_EN, HIGH);
   delay(10);
+}
+
+
+
+/* ------------------------------------------------------------------------------------------ *
+ * Write value into EEPROM and verify whethet in went OK
+ * CAVEAT: potential loop prevented by trying maxTries times
+ * -------------------------------------------------------------------------------------------*/
+void writeVerify(int adr, int val) {
+  int ctr = 0, val2 = 0;
+  while (ctr++ < maxTries) {
+    if (debug) {
+      Serial.print("\nWriting "); Serial.print(val);
+      Serial.print(" at address "); Serial.print(adr);
+    }
+    writeEEPROM(adr, val);
+    val2 = readEEPROM(adr);
+    if (debug) {
+      Serial.print(" - Reading: "); Serial.println(val2);
+    }
+    if (val == val2) {
+      break;
+    }
+  }
 }
 
 
@@ -284,7 +315,7 @@ void loop() {
               } else {
                 // get operands (adr and length)
                 strncpy(strAdr,(command+3),4);
-                strncpy(strOp1,(command+8),4);
+                strncpy(strLen,(command+8),4);
                 state = PRC;
               }
               break;
@@ -344,9 +375,9 @@ void loop() {
           if (debug) Serial.print("Reading ");
           
           adr = x2i(strAdr);
-          op1 = x2i(strOp1);
+          Len = x2i(strLen);
           
-          printContents(adr, op1);
+          printContents(adr, Len);
           
           Serial.println("< ");
           break;
@@ -364,22 +395,21 @@ void loop() {
           op7 = x2i(strOp7);
           op8 = x2i(strOp8);
           
-          Serial.print("WR ");
-          char buf[80];
-          sprintf(buf, "%04x  %02x %02x %02x %02x  %02x %02x %02x %02x",
+          char wrt[80];
+          sprintf(wrt, "%04x %02x %02x %02x %02x %02x %02x %02x %02x",
             adr, op1, op2, op3, op4, op5, op6, op7, op8);
-          Serial.print(buf);
+          Serial.print(wrt);
+
+          writeVerify(adr+0, op1);
+          writeVerify(adr+1, op2); 
+          writeVerify(adr+2, op3); 
+          writeVerify(adr+3, op4); 
+          writeVerify(adr+4, op5); 
+          writeVerify(adr+5, op6); 
+          writeVerify(adr+6, op7); 
+          writeVerify(adr+7, op8); 
           
-          writeEEPROM(adr+0, op1); 
-          writeEEPROM(adr+1, op2); 
-          writeEEPROM(adr+2, op3); 
-          writeEEPROM(adr+3, op4); 
-          writeEEPROM(adr+4, op5); 
-          writeEEPROM(adr+5, op6); 
-          writeEEPROM(adr+6, op7); 
-          writeEEPROM(adr+7, op8); 
-          
-          Serial.println("< ");
+          Serial.println(" <");
           break;
         
         case QUI:                       // Processing Quit command
