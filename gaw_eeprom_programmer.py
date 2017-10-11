@@ -469,16 +469,49 @@ def  processCommand(command):
 
 
 #
+# === Show instructions form a specific instr code for a specified length
+#
+def showInstructions(ID, LL):
+	if ID == (ID+LL-1):
+		print "Showing control words for instruction 0x%02X" % ID
+	else:
+		print "Showing control words for instructions 0x%02X - 0x%02X" % (ID, ID+LL-1)
+	print " "
+	for op, contr in sorted(instr.iteritems()):	# iterate through instruction table
+		if ((op >= ID) and (op <= (ID + LL -1))):
+			print "0x%02X" % op
+			buffer = "   "
+			buf0 = "      CU0 -  "
+			buf1 = "      CU1 -  "
+			buf2 = "      CU2 -  "
+			for i in range(0, len(contr)):		# iterate through microcode steps and
+												# 	print the 3 byte control words
+				toadd = "%06X " % contr[i]
+				buffer = buffer + toadd
+				buf0 = buf0 + str("%02X " % ((contr[i]) & 0xFF) )
+				buf1 = buf1 + str("%02X " % ((contr[i] >> 8) & 0xFF) )
+				buf2 = buf2 + str("%02X " % ((contr[i] >> 16) & 0xFF) )
+			print buffer
+			print buf0
+			print buf1
+			print buf2
+			print " "
+
+
+#
 # === Display help information about the program
 #
 def displayHelp():
 	print ""
 	print "This program is used to program an EEPROM chip"
-	print "using and Arduino Nano, available commands:"
+	print "using an Arduino Nano, available commands are:"
 	print ""
-	print "\t?"
-	print "\tH\tThis help information"
-	print "\tHELP"
+	print "\t?   \\"
+	print "\tH    +-\tThis help information"
+	print "\tHELP/"
+	print ""
+	print "\tSH\tShow control word for instruction(s),\tSyntax:SH II LL"
+	print "\t\t   including EEPROM contents per chip"
 	print ""
 	print "\tRD\tRead from the EEPROM,\tSyntax:RD AAAA LLLL"
 	print ""
@@ -498,6 +531,8 @@ def displayHelp():
 	print "\tAAAA stands for a four digit hexadecimal address"
 	print "\tLLLL stands for a four digit hexadecimal length"
 	print "\tVV stands for a two digit hexadecimal value"
+	print "\tII stands for a two digit hexadecimal instruction code"
+	print "\tLL stands for a two digit hexadecimal length"
 	print "\tfor CU0, CU1 and CU2, see the Github page."
 	print ""
 	
@@ -550,6 +585,14 @@ while True:
 		writeEEPROM(1)
 		writeEEPROM(2)
 		print "Programming complete"
+		
+	elif (Command[:2] == "SH"):
+		ic = Command[3:5]
+		id = int(ic, 16)
+		ll = 1
+		if len(Command) > 5:
+			ll = int(Command[6:8],16)
+		showInstructions(id, ll)
 		
 	else:
 		processCommand(Command + " !")
