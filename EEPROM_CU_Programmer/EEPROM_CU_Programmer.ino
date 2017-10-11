@@ -198,12 +198,14 @@ void printContents(int start, int len) {
  * -------------------------------------------------------------------------------------------*/
 void eraseEEPROM() {
   // Erase entire EEPROM
-  Serial.print("Erasing EEPROM");
+  Serial.println("Erasing EEPROM");
   for (int address = 0; address <= 8191; address += 1) {
-    writeEEPROM(address, 0x00);
+    writeVerify(address, 0x00);
 
     if (address % 256 == 0) {
-      Serial.print(".");
+      char buf[10];
+      sprintf(buf, ". %04x", address);
+      Serial.println(buf);
     }
   }
   Serial.println(" done");
@@ -308,6 +310,10 @@ void loop() {
         if (cc != 0) {
         
           switch (cc) {
+            case CLR:
+              state = PRC;
+              break;
+
             case REA:
               if (strlen(command) < 11) {
                 strcpy(errtxt, "Insufficient operands for Read command");
